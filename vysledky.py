@@ -110,4 +110,4 @@ else:
                     """, unsafe_allow_html=True)
 
 st.markdown("---")
-st.caption(f"© 2024 {KLUB_NAZEV} | Data se aktualizují po uzavření kola organizátorem.")
+st.caption(f"© 2026 {KLUB_NAZEV} | Data se aktualizují po uzavření kola organizátorem.")
