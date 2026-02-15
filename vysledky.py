@@ -4,8 +4,18 @@ import os, json
 from streamlit_gsheets import GSheetsConnection
 
 # --- KONFIGURACE ---
-KLUB_NAZEV = "Club přátel pétanque HK - LIVE VÝSLEDKY"
-st.set_page_config(page_title=KLUB_NAZEV, layout="wide")
+KLUB_NAZEV = "Club přátel pétanque HK"
+st.set_page_config(page_title="LIVE Výsledky | Pétanque HK", layout="wide")
+
+# Vlastní CSS pro lepší vzhled na mobilech
+st.markdown("""
+    <style>
+    .main { background-color: #f8f9fa; }
+    .stMetric { background-color: #ffffff; padding: 15px; border-radius: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+    .stTable { background-color: white; border-radius: 10px; }
+    h1 { color: #1e3a8a; font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; }
+    </style>
+    """, unsafe_allow_html=True)
 
 # --- PŘIPOJENÍ KE GOOGLE SHEETS ---
 try:
@@ -26,54 +36,73 @@ def nacti_data():
 
 data = nacti_data()
 
-# --- ZOBRAZENÍ ---
-if os.path.exists("logo.jpg"):
-    st.image("logo.jpg", width=100)
+# --- LOGO A HLAVIČKA ---
+col_l, col_r = st.columns([1, 4])
+with col_l:
+    if os.path.exists("logo.jpg"):
+        st.image("logo.jpg", width=120)
+with col_r:
+    if data:
+        st.title(f"🏆 {data['nazev_akce']}")
+        st.caption(f"Oficiální výsledky klubu: {KLUB_NAZEV}")
 
+# --- STAV TURNAJE ---
 if not data or data.get("kolo") == 0:
     st.info("⌛ Turnaj zatím nebyl zahájen. Čekáme na první kolo...")
 else:
-    st.title(f"📊 {data['nazev_akce']}")
-    
-    # Rozhodnutí, zda je turnaj u konce
+    # Horní lišta se statistikami
+    c1, c2, c3 = st.columns(3)
     je_konec = data['kolo'] > data['max_kol']
     
-    if je_konec:
-        st.success("🏁 Turnaj byl ukončen - Konečné výsledky")
-    else:
-        st.warning(f"🏟️ Probíhá {data['kolo']}. kolo z {data['max_kol']}")
+    with c1:
+        st.metric("Stav", "Finále 🏁" if je_konec else f"Kolo {data['kolo']} 🏟️")
+    with c2:
+        st.metric("Celkem kol", data['max_kol'])
+    with c3:
+        st.metric("Hráčů", len([t for t in data['tymy'] if t['Hráč/Tým'] != "VOLNÝ LOS"]))
 
-    # Příprava tabulky
+    st.divider()
+
+    # --- TABULKA POŘADÍ ---
+    st.subheader("📊 Aktuální pořadí")
     df_t = pd.DataFrame(data['tymy'])
-    # Odfiltrování volného losu pro tabulku
     df_t = df_t[df_t["Hráč/Tým"] != "VOLNÝ LOS"].copy()
     df_t["Rozdíl"] = df_t["Skóre +"] - df_t["Skóre -"]
     
-    # Seřazení podle pravidel (Výhry > Buchholz > Rozdíl)
+    # Seřazení
     df_t = df_t.sort_values(by=["Výhry", "Buchholz", "Rozdíl"], ascending=False).reset_index(drop=True)
     df_t.index += 1
+    
+    # Hezčí zobrazení tabulky
+    st.dataframe(
+        df_t[["Hráč/Tým", "Výhry", "Buchholz", "Skóre +", "Skóre -", "Rozdíl"]],
+        use_container_width=True,
+        column_config={
+            "Hráč/Tým": st.column_config.TextColumn("Hráč / Tým", help="Jméno účastníka"),
+            "Výhry": st.column_config.NumberColumn("Výhry 🥇"),
+            "Rozdíl": st.column_config.NumberColumn("Rozdíl skóre 📈"),
+        }
+    )
 
-    # Zobrazení tabulky (včetně sloupce Buchholz, aby hráči viděli proč jsou tam kde jsou)
-    st.subheader("Aktuální pořadí")
-    st.table(df_t[["Hráč/Tým", "Výhry", "Buchholz", "Skóre +", "Skóre -", "Rozdíl"]])
-
-    # Historie zápasů
-    st.subheader("📊 Odehrané zápasy")
+    # --- HISTORIE ZÁPASŮ ---
+    st.subheader("🏟️ Průběh zápasů")
     if not data['historie']:
         st.write("Zatím nebyly odehrány žádné zápasy.")
     else:
-        # Otočíme historii, aby nejnovější kola byla nahoře
         historie_df = pd.DataFrame(data['historie'])
         for k in sorted(historie_df["Kolo"].unique(), reverse=True):
             with st.expander(f"Kolo {k}", expanded=(k == data['kolo']-1 or je_konec)):
                 kol_zápasy = historie_df[historie_df["Kolo"] == k]
                 for _, z in kol_zápasy.iterrows():
-                    # Vizuální zvýraznění vítěze
-                    if z["S1"] > z["S2"]:
-                        st.write(f"🏆 **{z['Hráč/Tým 1']}** {z['S1']} : {z['S2']} {z['Hráč/Tým 2']}")
-                    elif z["S2"] > z["S1"]:
-                        st.write(f"{z['Hráč/Tým 1']} {z['S1']} : {z['S2']} **{z['Hráč/Tým 2']}** 🏆")
-                    else:
-                        st.write(f"{z['Hráč/Tým 1']} {z['S1']} : {z['S2']} {z['Hráč/Tým 2']}")
+                    # Formátování výsledku
+                    win1 = "**" if z["S1"] > z["S2"] else ""
+                    win2 = "**" if z["S2"] > z["S1"] else ""
+                    
+                    st.markdown(f"""
+                    <div style="padding:10px; border-radius:5px; background-color:white; border-left: 5px solid #1e3a8a; margin-bottom:5px;">
+                        <span style="font-size:1.1em;">{win1}{z['Hráč/Tým 1']}{win1}  <b style="color:#1e3a8a;">{z['S1']} : {z['S2']}</b>  {win2}{z['Hráč/Tým 2']}{win2}</span>
+                    </div>
+                    """, unsafe_allow_html=True)
 
-st.caption("Data se aktualizují automaticky po každém kole. Pro ruční aktualizaci obnovte stránku.")
+st.markdown("---")
+st.caption("🔄 Stránka se neaktualizuje sama, pro nejnovější data ji obnovte.")
