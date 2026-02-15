@@ -61,7 +61,7 @@ else:
     with c1:
         st.metric("Stav", "Finále 🏁" if je_konec else f"Kolo {data['kolo']} 🏟️")
     with c2:
-        st.metric("Formát", "Švýcar" if data['system'] == "Švýcar" else "Kombinace")
+        st.metric("Formát", data['system'])
     with c3:
         st.metric("Plánováno kol", data['max_kol'])
     with c4:
